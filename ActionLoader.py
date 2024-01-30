@@ -486,6 +486,7 @@ class ActionLoaderPanel(bpy.types.Panel):
         
         #layout.operator("ttt.action", text ="TTTTTT###TTTTTTTT").nome = "conho"
         layout.label (text = "Other Tools: ")
+        layout.operator("push_to_nla.action", icon = "NLA")
         layout.operator("delete.action", icon = "ERROR")
         #.delaction = bpy.data.actions[ob.action_list_index].name
 
@@ -730,6 +731,38 @@ class OBJECT_OT_DeleteAction(bpy.types.Operator):
         #bpy.data.actions.remove(bpy.data.actions[self.delaction], True)
         return{'FINISHED'} 
   
+class OBJECT_OT_PushToNLA(bpy.types.Operator):
+    bl_idname = "push_to_nla.action"
+    bl_label = "Push To NLA"
+    def execute(self, context):
+        #set_normal_speed()
+        if not bpy.data.actions:
+            return {'FINISHED'}
+
+        ob = context.active_object
+        if ob == None:
+            ActionNR = context.scene.action_list_index
+        else:
+            ActionNR = context.object.action_list_index
+
+        ActiveAction = bpy.data.actions[ActionNR] 
+        
+        if ob:
+            ob.action_list_index = bpy.context.object.action_list_index + 1
+        else:
+            bpy.context.scene.action_list_index = bpy.context.scene.action_list_index + 1
+        
+        #bpy.data.actions.remove(AA, do_unlink=True)
+        
+        tracks = ob.animation_data.nla_tracks
+        new_track = tracks.new(prev=None)
+        new_track.name = ActiveAction.name
+        strip = new_track.strips.new(ActiveAction.name, int(ActiveAction.frame_start), ActiveAction)
+        new_track.lock = True
+        new_track.mute = True
+        ob.animation_data.action = None
+        return {'FINISHED'} 
+
     
 def quickfix_index():
   
