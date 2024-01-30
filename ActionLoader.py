@@ -15,6 +15,11 @@ import bpy
 import inspect
 import sys
 import os
+
+from bpy.props import (StringProperty,
+                       PointerProperty,
+                       )
+
 global extra_info
 extra_info = False
 
@@ -473,27 +478,39 @@ class ActionLoaderPanel(bpy.types.Panel):
             rangemode_icon = "KEYTYPE_MOVING_HOLD_VEC"
         else:
             rangemode_icon = "HANDLETYPE_FREE_VEC"
+
+        box = layout.box()
         
-        layout.label(text = "Prev Speed:")
+        box.label(text = "Prev Speed:")
         
-        layout.prop(context.scene, 'actionloader_speedprev', expand=True)
+        box.prop(context.scene, 'actionloader_speedprev', expand=True)
              
-        layout.label(text = "Set Frame Range:")
-        row = layout.row(align=True)
+        box.label(text = "Set Frame Range:")
+        row = box.row(align=True)
         row.prop(context.scene, 'actionloader_rangemode', expand=True )
         row.label(icon = rangemode_icon)
-        layout.operator("setcustombyrange.action", icon = "FILE_REFRESH")
+        box.operator("setcustombyrange.action", icon = "FILE_REFRESH")
         
-        #layout.operator("ttt.action", text ="TTTTTT###TTTTTTTT").nome = "conho"
-        layout.label (text = "Other Tools: ")
-        layout.operator("push_to_nla.action", icon = "NLA")
-        layout.operator("delete.action", icon = "ERROR")
+
+        box = layout.box()
+        box.label(text="NLA Tools")
+        box.operator("push_to_nla.action", icon = "NLA_PUSHDOWN")
+        row = box.row()
+        row.operator("push_all_to_nla_with_prefix.action", icon = "NLA_PUSHDOWN")
+        row.prop(scn, "actionloader_actionnameprefix", text="")
+        box.operator("clean_nla_tracks.action", icon = "BRUSH_DATA")
+
+        box = layout.box()
+        box.label (text = "Other Tools")
+        box.operator("delete.action", icon = "ERROR")
         #.delaction = bpy.data.actions[ob.action_list_index].name
 
-        layout.label(text= "Options:")
+
+        box = layout.box()
+        box.label(text= "Options")
         
-        layout.prop(scn, "actionloader_showicons", text="Show Icons")
-        layout.prop(scn, "actionloader_autorange", text="Set Auto Range")
+        box.prop(scn, "actionloader_showicons", text="Show Icons")
+        box.prop(scn, "actionloader_autorange", text="Set Auto Range")
 
 
 class OBJECT_OT_SetActionRange(bpy.types.Operator):
@@ -730,11 +747,23 @@ class OBJECT_OT_DeleteAction(bpy.types.Operator):
         bpy.data.actions.remove(AA, do_unlink=True)
         #bpy.data.actions.remove(bpy.data.actions[self.delaction], True)
         return{'FINISHED'} 
+    
+def push_action_to_nla(object, action):
+    tracks = object.animation_data.nla_tracks
+    new_track = tracks.new(prev=None)
+    new_track.name = action.name
+    strip = new_track.strips.new(action.name, int(action.frame_start), action)
+    new_track.lock = True
+    new_track.mute = True
+    object.animation_data.action = None
+    pass
   
 class OBJECT_OT_PushToNLA(bpy.types.Operator):
     bl_idname = "push_to_nla.action"
     bl_label = "Push To NLA"
     def execute(self, context):
+        print(context)
+
         #set_normal_speed()
         if not bpy.data.actions:
             return {'FINISHED'}
@@ -748,22 +777,58 @@ class OBJECT_OT_PushToNLA(bpy.types.Operator):
         ActiveAction = bpy.data.actions[ActionNR] 
         
         if ob:
-            ob.action_list_index = bpy.context.object.action_list_index + 1
+            ob.action_list_index = bpy.context.object.action_list_index - 1
         else:
-            bpy.context.scene.action_list_index = bpy.context.scene.action_list_index + 1
+            bpy.context.scene.action_list_index = bpy.context.scene.action_list_index - 1
         
         #bpy.data.actions.remove(AA, do_unlink=True)
-        
-        tracks = ob.animation_data.nla_tracks
-        new_track = tracks.new(prev=None)
-        new_track.name = ActiveAction.name
-        strip = new_track.strips.new(ActiveAction.name, int(ActiveAction.frame_start), ActiveAction)
-        new_track.lock = True
-        new_track.mute = True
-        ob.animation_data.action = None
+            
+        push_action_to_nla(ob, ActiveAction)
         return {'FINISHED'} 
-
     
+class OBJECT_OT_PushAllToNLAWithPrefix(bpy.types.Operator):
+    bl_idname = "push_all_to_nla_with_prefix.action"
+    bl_label = "Push All To NLA With Prefix"
+    def execute(self, context):
+        #set_normal_speed()
+        scn = context.scene
+
+        if not bpy.data.actions:
+            return {'FINISHED'}
+        
+        actions_to_push = []
+
+        for i in range(len(bpy.data.actions)):
+            if bpy.data.actions[i].name.startswith(scn.actionloader_actionnameprefix):
+                actions_to_push.append(i)
+            pass
+
+        for i in actions_to_push:
+            push_action_to_nla(context.active_object, bpy.data.actions[i])
+
+        return {'FINISHED'}
+    
+
+class OBJECT_OT_ClearNLATracks(bpy.types.Operator):
+    bl_idname = "clean_nla_tracks.action"
+    bl_label = "Clear All NLA Tracks"
+    def execute(self, context):
+        #set_normal_speed()
+    
+        obj = context.active_object
+
+        if obj is not None and obj.animation_data is not None:
+            anim_data = obj.animation_data
+
+            # Проверяем, есть ли данные NLA
+            if anim_data.nla_tracks:
+                # Удаляем все NLA треки
+                for track in anim_data.nla_tracks:
+                    anim_data.nla_tracks.remove(track)
+
+        return {'FINISHED'}
+
+
 def quickfix_index():
   
     for x in range(len(bpy.data.actions)): 
@@ -802,8 +867,13 @@ def register():
         set = set_prevspeed, 
         get = get_prevspeed
         )
+    bpy.types.Scene.actionloader_actionnameprefix = bpy.props.StringProperty(
+        name = "Action prefix",
+        description = "",
+        default = ""
+        )
     bpy.types.Scene.actionloader_showicons = bpy.props.BoolProperty(
-        name = "Show icons", 
+        name = "Show icons",
         description = "Show icons in Action Loader Addon",
         default = True
         )
@@ -823,6 +893,7 @@ def unregister():
 
     del bpy.types.Object.action_list_index
     del bpy.types.Scene.action_list_index
+    del bpy.types.Scene.actionloader_actionnameprefix
     del bpy.types.Scene.actionloader_showicons
     del bpy.types.Scene.actionloader_autorange
     del bpy.types.Scene.actionloader_speedprev
