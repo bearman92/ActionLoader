@@ -803,6 +803,8 @@ class OBJECT_OT_PushAllToNLAWithPrefix(bpy.types.Operator):
                 actions_to_push.append(i)
             pass
 
+        actions_to_push.reverse()
+
         for i in actions_to_push:
             push_action_to_nla(context.active_object, bpy.data.actions[i])
 
